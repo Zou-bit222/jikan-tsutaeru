@@ -1,6 +1,7 @@
 // こうたま時間 PWA: network-first for page updates, Push API handler for closed-app reminders.
-const CACHE='koutama-jikan-push-v1';
-const ASSETS=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+// Android の小さな通知アイコンには単色・透過の専用バッジを使用する。
+const CACHE='koutama-jikan-push-v2-badge';
+const ASSETS=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./badge-96.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));
 });
@@ -26,7 +27,8 @@ self.addEventListener('push',event=>{
   const title=typeof message.title==='string'?message.title:'こうたま時間';
   const options={
     body:typeof message.body==='string'?message.body:'予定のお知らせです',
-    icon:'./icon-192.png',badge:'./icon-192.png',
+    icon:'./icon-192.png',
+    badge:'./badge-96.png',
     tag:typeof message.tag==='string'?message.tag:'koutama-reminder',
     silent:true,data:{url:self.registration.scope}
   };
