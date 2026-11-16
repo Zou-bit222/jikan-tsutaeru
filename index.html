@@ -36,7 +36,7 @@ function getNoticeWorker(){
 }
 async function displayReminder(e,n){
  if(!('Notification' in window)||Notification.permission!=='granted')return false;
- const options={body:`${e.name}まであと${n}分。遅れそうなら早めに連絡しよう。`,icon:'./icon-192.png',silent:true,tag:e.id+'-'+n};
+ const options={body:`${e.name}まであと${n}分。遅れそうなら早めに連絡しよう。`,icon:'./icon-192.png',badge:'./badge-96.png',silent:true,tag:e.id+'-'+n};
  try{
   const reg=await getNoticeWorker();
   if(reg&&typeof reg.showNotification==='function'){
