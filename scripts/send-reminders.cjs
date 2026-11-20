@@ -63,13 +63,15 @@ async function main(){
    }
   }
   const leads=Array.isArray(e.leads)?e.leads.filter(n=>LEADS.has(n)):[15,30];
-  for(const lead of new Set(leads)){
+  // Every shared appointment also sends an alert when its scheduled time arrives.
+  // This applies to existing appointments as well, without changing their stored data.
+  for(const lead of new Set([...leads,0])){
    const due=e.at-lead*60000, lateness=now-due;
    if(lateness<0 || lateness>MAX_LATENESS_MS)continue;
    for(const device of devices){
     const receipt=room.collection('pushSent').doc(formatId(doc.id,lead,device.ownerUid));
     if((await receipt.get()).exists)continue;
-    const body=`${e.name.slice(0,80)}まであと${lead}分。予定を確認してね。`;
+    const body=lead===0?`「${e.name.slice(0,80)}」の予定時刻だよ。今、予定を確認してね。`:`${e.name.slice(0,80)}まであと${lead}分。予定を確認してね。`;
     const payload=JSON.stringify({title:'こうたま時間',body,tag:doc.id+'-'+lead});
     try{
      // A successful push service acceptance is recorded, not guaranteed device delivery.
