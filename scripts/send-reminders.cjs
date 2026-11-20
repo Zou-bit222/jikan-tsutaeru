@@ -21,6 +21,9 @@ webpush.setVapidDetails('https://zou-bit222.github.io',VAPID_PUBLIC,VAPID_PRIVAT
 const room=db.collection('coupleRooms').doc(ROOM);
 const LEADS=new Set([5,10,15,30,60]);
 const MAX_LATENESS_MS=7*60*1000;
+// 新規登録の通知は即時呼び出しと5分ごとの定期実行の両方から検出する。
+// 過去の登録分を大量に通知しないため、作成から1時間以内に限定する。
+const NEW_EVENT_WINDOW_MS=60*60*1000;
 const MAX_EVENTS=300;
 const formatId=(eventId,lead,uid)=>crypto.createHash('sha256').update([eventId,lead,uid].join('|')).digest('hex');
 async function main(){
@@ -38,6 +41,27 @@ async function main(){
  let total=0,fail=0;
  for(const doc of evSnap.docs){
   const e=doc.data();if(!Number.isFinite(e.at)||typeof e.name!=='string')continue;
+  if(ALLOWED_UIDS.has(e.createdByUid) && Number.isFinite(e.createdAtMs) &&
+      e.createdAtMs<=now+60*1000 && now-e.createdAtMs<=NEW_EVENT_WINDOW_MS){
+   for(const device of devices){
+    // One-way: only a device explicitly opted in by こうちゃん receives
+    // creation alerts, and never for an event created by that same account.
+    if(device.newEventAlerts!==true||device.ownerUid===e.createdByUid)continue;
+    const receipt=room.collection('pushSent').doc(formatId(doc.id,'created',device.ownerUid));
+    if((await receipt.get()).exists)continue;
+    const when=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(e.at));
+    const body=`たまきさんが「${e.name.slice(0,48)}」を追加したよ。予定：${when}`;
+    const payload=JSON.stringify({title:'🐰 新しい予定が追加されたよ',body,tag:'new-'+doc.id});
+    try{
+     await webpush.sendNotification({endpoint:device.endpoint,keys:device.keys},payload,{TTL:900,urgency:'high'});
+     await receipt.set({eventId:doc.id,type:'created',uid:device.ownerUid,createdAtMs:e.createdAtMs,
+       acceptedAt:admin.firestore.FieldValue.serverTimestamp()});
+     total++;console.log(`新規予定の通知受付: event=${doc.id}, device=${device.ownerUid.slice(0,6)}…`);
+    }catch(err){
+     fail++;console.error(`新規予定の通知失敗: event=${doc.id}, HTTP=${err?.statusCode||'unknown'}, ${err.message}`);
+    }
+   }
+  }
   const leads=Array.isArray(e.leads)?e.leads.filter(n=>LEADS.has(n)):[15,30];
   for(const lead of new Set(leads)){
    const due=e.at-lead*60000, lateness=now-due;
