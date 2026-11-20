@@ -7,6 +7,13 @@
 <section class="panel" id="compose"><span class="step">③ LINEで伝える</span><h2>たまきに連絡する</h2><label for="msgEvent">どの予定について？</label><select id="msgEvent"><option value="">予定を選ばない</option></select><label for="msgType">今の状況を選んでね</label><select id="msgType"><option value="on">😊 予定どおり</option><option value="late">⏰ 遅れそう</option><option value="update">💬 時間がまだ読めない</option></select><div id="delayWrap" class="hidden"><label for="delay">何分くらい遅れる？</label><select id="delay"><option value="5">5分</option><option value="10">10分</option><option value="15" selected>15分</option><option value="20">20分</option><option value="30">30分</option><option value="45">45分</option><option value="60">60分</option></select></div><label for="extra">一言追加（任意）</label><input id="extra" maxlength="140" placeholder="例：電車が遅れてる"><div class="message" id="preview" aria-live="polite"></div><div class="actions" style="margin-top:12px"><button class="primary" id="share" type="button">LINEで連絡する</button><button class="secondary" id="copy" type="button">文章をコピー</button></div><p class="muted">LINEへの自動送信はしません。送信先と文章を確認してから送ってください。</p></section>
 <footer>ログイン前の予定は端末内に保存され、共有ログイン後の予定はFirestoreに保存されます。ブラウザのデータ削除やシークレットモードでは消える場合があります。通知・送信の成功は保証されません。</footer>
 </main><script>
+document.getElementById('syncPanel').insertAdjacentHTML('beforebegin', `
+<section class="panel" id="newEventAlertPanel">
+ <span class="step">🐰 こうちゃん専用のお知らせ</span>
+ <h2>たまきさんが予定を追加したら通知する</h2>
+ <label style="display:flex;align-items:center;gap:12px;line-height:1.6"><input id="receiveNewEventAlert" type="checkbox" style="width:24px;height:24px;flex:none;accent-color:#ad6b72"><span>このスマホに「予定が追加されたよ」と知らせる</span></label>
+ <p class="muted" id="newEventAlertStatus">こうちゃんのスマホだけONにしてね。たまきさんのスマホはOFFのままで大丈夫。</p>
+</section>`);
 const $=id=>document.getElementById(id);document.querySelectorAll('[data-quick]').forEach(b=>b.addEventListener('click',()=>{$('eventName').value=b.dataset.quick;$('eventTime').focus()}));const KEY='jikan-tsutaeru-events-v1';let events=[];try{const data=JSON.parse(localStorage.getItem(KEY)||'[]');if(Array.isArray(data))events=data.filter(e=>e&&typeof e.id==='string'&&typeof e.name==='string'&&Number.isFinite(e.at))}catch(e){}const TASK_KEY='koutama-personal-tasks-v1';let tasks=[];try{const data=JSON.parse(localStorage.getItem(TASK_KEY)||'[]');if(Array.isArray(data))tasks=data.filter(t=>t&&typeof t.id==='string'&&typeof t.name==='string'&&Number.isFinite(t.at))}catch(e){}const saveTasks=()=>localStorage.setItem(TASK_KEY,JSON.stringify(tasks));const save=()=>{if(window.koutamaSharedSave){window.koutamaSharedSave(events);return}localStorage.setItem(KEY,JSON.stringify(events));if(window.koutamaUpdateLocalBackup)window.koutamaUpdateLocalBackup(events)};const fmt=ts=>new Intl.DateTimeFormat('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(ts));const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const leadsOf=e=>Array.isArray(e.leads)?e.leads.filter(n=>[5,10,15,30,60].includes(n)):[15,30];const leadText=e=>leadsOf(e).slice().sort((a,b)=>b-a).map(n=>n===60?"1時間前":n+"分前").join("・")||"通知なし";const durationLabel=minutes=>{const days=Math.floor(minutes/1440),hours=Math.floor(minutes%1440/60),mins=minutes%60;return `${days?days+'日':''}${hours?hours+'時間':''}${mins?mins+'分':''}`||'0分'};
 const countdown=ms=>ms<0?`${durationLabel(Math.ceil(-ms/60000))}過ぎています`:ms<60000?'まもなく予定時刻':`あと${durationLabel(Math.ceil(ms/60000))}`;
 const countdownTotal=ms=>{const minutes=Math.ceil(ms/60000);return minutes>=60&&minutes<1440?`<p class="time-total">（${minutes}分）</p>`:''};
@@ -24,7 +31,17 @@ function exportCalendar(e){
  const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='jikan-'+e.id+'.ics';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
  alert('Galaxyカレンダーでファイルを開いて保存してください。ダウンロードした .ics を開いて、カレンダーへ「保存」してください。通知が「' + leadText(e) + '」になっているか必ず確認してね。カレンダーアプリによっては通知設定が引き継がれません。');
 }
-$('eventForm').addEventListener('submit',ev=>{ev.preventDefault();const name=$('eventName').value.trim(),at=new Date($('eventTime').value).getTime();if(!name||!Number.isFinite(at)||at<=Date.now()){alert('これからの日時を入力してね。');return}const leads=[...document.querySelectorAll('#reminderChoices input:checked')].map(x=>Number(x.value));events.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),name,at,leads,notifiedLeads:[]});save();$('eventName').value='';render();$('eventTime').focus()});$('events').addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;if(b.dataset.del){if(confirm('この予定を削除する？')){events=events.filter(e=>e.id!==b.dataset.del);save();render()}}else if(b.dataset.cal){const e=events.find(x=>x.id===b.dataset.cal);if(e)exportCalendar(e)}else if(b.dataset.send){$('msgEvent').value=b.dataset.send;preview();$('compose').scrollIntoView({behavior:'smooth'})}});['msgEvent','msgType','delay','extra'].forEach(id=>$(id).addEventListener('input',preview));$('copy').addEventListener('click',async()=>{const t=getMessage();try{await navigator.clipboard.writeText(t);alert('文章をコピーしました。LINEに貼り付けて送ってね。')}catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.append(ta);ta.select();document.execCommand('copy');ta.remove();alert('文章をコピーしました。')}});$('share').addEventListener('click',async()=>{const text=getMessage();if(navigator.share){try{await navigator.share({text})}catch(e){if(e.name!=='AbortError')alert('共有できませんでした。「文章をコピー」を使ってね。')}}else{try{await navigator.clipboard.writeText(text);alert('文章をコピーしました。LINEに貼り付けてね。')}catch(e){alert('共有に対応していません。「文章をコピー」を使ってね。')}}});
+$('eventForm').addEventListener('submit',ev=>{
+ ev.preventDefault();
+ const name=$('eventName').value.trim(),at=new Date($('eventTime').value).getTime();
+ if(!name||!Number.isFinite(at)||at<=Date.now()){alert('これからの日時を入力してね。');return}
+ const leads=[...document.querySelectorAll('#reminderChoices input:checked')].map(x=>Number(x.value));
+ const creatorUid=window.koutamaCurrentUser?.uid||null;
+ events.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2,7),name,at,leads,notifiedLeads:[],
+  ...(creatorUid?{createdByUid:creatorUid,createdAtMs:Date.now()}:{} )});
+ save();$('eventName').value='';render();$('eventTime').focus();
+});
+$('events').addEventListener('click',ev=>{const b=ev.target.closest('button');if(!b)return;if(b.dataset.del){if(confirm('この予定を削除する？')){events=events.filter(e=>e.id!==b.dataset.del);save();render()}}else if(b.dataset.cal){const e=events.find(x=>x.id===b.dataset.cal);if(e)exportCalendar(e)}else if(b.dataset.send){$('msgEvent').value=b.dataset.send;preview();$('compose').scrollIntoView({behavior:'smooth'})}});['msgEvent','msgType','delay','extra'].forEach(id=>$(id).addEventListener('input',preview));$('copy').addEventListener('click',async()=>{const t=getMessage();try{await navigator.clipboard.writeText(t);alert('文章をコピーしました。LINEに貼り付けて送ってね。')}catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.append(ta);ta.select();document.execCommand('copy');ta.remove();alert('文章をコピーしました。')}});$('share').addEventListener('click',async()=>{const text=getMessage();if(navigator.share){try{await navigator.share({text})}catch(e){if(e.name!=='AbortError')alert('共有できませんでした。「文章をコピー」を使ってね。')}}else{try{await navigator.clipboard.writeText(text);alert('文章をコピーしました。LINEに貼り付けてね。')}catch(e){alert('共有に対応していません。「文章をコピー」を使ってね。')}}});
 // Android Chrome/PWA: display local reminders via the active Service Worker.
 let noticeWorkerPromise=null;
 function getNoticeWorker(){
@@ -113,6 +130,12 @@ const firebaseConfig={apiKey:"AIzaSyBICvs8y80St4Tkp2PNaWgSXQXi42HgNq8",authDomai
 // 標準Web Push。Android Chrome / iOS 16.4+ ホーム画面のWebアプリに対応。
 const WEB_PUSH_PUBLIC_KEY="BCpW-Iie2OZtHtxuWlhiZXFkeiLY-gNAhceM7liG1BBb5rniDu3O-p6Egg519FNZWsvZKNKy33x9bYV0HSCstSM";
 const PUSH_DEVICES_PATH='coupleRooms/koutama-couple-v1/pushDevices';
+// Cloudflare Worker URL: GitHub token is held by the Worker, never by the browser.
+const NEW_EVENT_NOTIFY_URL='https://koutama-reminder-cron.y3hcp3gap-mtai5salp.workers.dev/event-created';
+const EVENT_ALERT_KEY='koutama-receive-new-event-alert-v1';
+const newEventAlertToggle=document.getElementById('receiveNewEventAlert');
+const newEventAlertStatus=document.getElementById('newEventAlertStatus');
+newEventAlertToggle.checked=localStorage.getItem(EVENT_ALERT_KEY)==='yes';
 const pushStatus=document.getElementById('pushStatus');
 const pushButton=document.getElementById('enablePush');
 function vapidKeyBytes(base64url){
@@ -134,9 +157,23 @@ async function savePushDevice(sub,user){
  await db.collection('coupleRooms').doc('koutama-couple-v1').collection('pushDevices').doc(user.uid).set({
   ownerUid:user.uid, endpoint:info.endpoint,
   keys:{p256dh:info.keys.p256dh,auth:info.keys.auth},
+  newEventAlerts:newEventAlertToggle.checked,
   updatedAt:firebase.firestore.FieldValue.serverTimestamp()
- });
+ },{merge:true});
 }
+newEventAlertToggle.addEventListener('change',async()=>{
+ localStorage.setItem(EVENT_ALERT_KEY,newEventAlertToggle.checked?'yes':'no');
+ const user=firebase.apps.length?firebase.auth().currentUser:null;
+ if(!user){newEventAlertStatus.textContent='設定を記憶したよ。「ふたりの予定」でログインしてから通知登録してね。';return}
+ try{
+  const reg=await getNoticeWorker(),sub=await reg?.pushManager?.getSubscription();
+  if(!sub||!samePushKey(sub)){
+   newEventAlertStatus.textContent='設定を記憶したよ。上の「このスマホを通知に登録する」を押してね。';return;
+  }
+  await savePushDevice(sub,user);
+  newEventAlertStatus.textContent=newEventAlertToggle.checked?'✅ このスマホだけ、相手が追加した予定をお知らせするよ。':'✅ 予定が追加されたときのお知らせをOFFにしたよ。';
+ }catch(err){newEventAlertStatus.textContent='設定の同期ができなかったよ。通知登録をもう一度押してね。';console.warn(err)}
+});
 async function setupPush(){
  if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window)){
   pushStatus.textContent='このブラウザではバックグラウンド通知を利用できません。iPhoneはSafariからホーム画面に追加したアプリで開いてね。';return;
@@ -180,6 +217,20 @@ let sharedUnsubscribe=null,sharedActive=false,sharedUser=null;
 const SHARED_ROOM='koutama-couple-v1';
 const syncStatus=document.getElementById('syncStatus');
 function setSyncStatus(msg){syncStatus.textContent=msg}
+async function requestNewEventNotice(event,user){
+ if(!user||event.createdByUid!==user.uid||!Number.isFinite(event.createdAtMs))return;
+ try{
+  const token=await user.getIdToken();
+  const response=await fetch(NEW_EVENT_NOTIFY_URL,{
+   method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+   body:JSON.stringify({eventId:event.id})
+  });
+  if(!response.ok)throw new Error('通知受付 HTTP '+response.status);
+ }catch(err){
+  // Scheduled GitHub Actions also checks new events every five minutes as a fallback.
+  console.warn('予定の保存は完了。すぐのお知らせは再試行対象です。',err);
+ }
+}
 async function initSharedAuth(){
  try{
   const app=firebase.apps.length?firebase.app():firebase.initializeApp(firebaseConfig);
@@ -227,6 +278,7 @@ async function initSharedAuth(){
    if(sharedUnsubscribe){sharedUnsubscribe();sharedUnsubscribe=null}
    sharedActive=false;window.koutamaSharedSave=null;
    events=LOCAL_EVENTS_BACKUP.map(e=>({...e}));render();
+   window.koutamaCurrentUser=user;
    sharedUser=user;
    if(user)void refreshPushOnLogin(user);
    authForm.hidden=!!user;
@@ -242,10 +294,13 @@ async function initSharedAuth(){
     window.koutamaSharedSave=async current=>{
      try{
       const existing=await ref.get();const batch=db.batch();
+      const existingIds=new Set(existing.docs.map(doc=>doc.id));
+      const justAdded=current.filter(e=>!existingIds.has(e.id)&&e.createdByUid===user.uid&&Number.isFinite(e.createdAtMs));
       const ids=new Set(current.map(e=>e.id));
       existing.docs.forEach(doc=>{if(!ids.has(doc.id))batch.delete(doc.ref)});
       current.forEach(e=>batch.set(ref.doc(e.id),JSON.parse(JSON.stringify(e))));
-      await batch.commit();setSyncStatus('✅ ふたりの予定を同期しています。')
+      await batch.commit();setSyncStatus('✅ ふたりの予定を同期しています。');
+      for(const event of justAdded)void requestNewEventNotice(event,user);
      }catch(e){setSyncStatus('保存できませんでした：'+(e.code||e.message));alert('共有予定の保存に失敗しました。通信・権限を確認してください。')}
     };
     setSyncStatus('✅ ふたりの共有予定を表示しています。端末内の予定は別に保管されています。');
@@ -347,6 +402,7 @@ footer{margin:24px 7px 10px;font-size:12px;color:#80696a}
  if(!main||!get('next')||!get('eventForm')||!get('taskForm'))return;
  const todayPanel=get('next').closest('.panel');
  const pushPanel=get('enablePush').closest('.panel');
+ const newEventAlertPanel=get('newEventAlertPanel');
  const syncPanel=get('syncPanel');
  const eventPanel=get('eventForm').closest('.panel');
  const taskPanel=get('taskPanel');
@@ -397,7 +453,7 @@ footer{margin:24px 7px 10px;font-size:12px;color:#80696a}
  const settingsSummary=document.createElement('summary');settingsSummary.textContent='⚙️ 通知・ふたり共有の設定';
  const settingsBody=document.createElement('div');settingsBody.className='disclosure-content';
  const info=document.createElement('p');info.className='setting-note';info.textContent='通知や共有の状態を確認するときに開いてね。予定はいつもの場所に保存されるよ。';
- settingsBody.append(info,noticeButtons,noticeInfo,pushPanel,syncPanel);
+ settingsBody.append(info,noticeButtons,noticeInfo,pushPanel,newEventAlertPanel,syncPanel);
  if(calendarPanel)settingsBody.appendChild(calendarPanel);
  settingsPanel.append(settingsSummary,settingsBody);
 
